@@ -20,7 +20,7 @@ import networkx as nx
 from itertools import product
 
 from castle.common import BaseLearner, Tensor
-
+from castle.common.priori_knowledge import PrioriKnowledge
 
 class TTPM(BaseLearner):
     """
@@ -51,6 +51,9 @@ class TTPM(BaseLearner):
     max_iter: int
         Maximum number of iterations.
 
+    priori_knowledge: PrioriKnowledge, default=None
+        a class object PrioriKnowledge
+
     Examples
     --------
     >>> from castle.common import GraphDAG
@@ -70,7 +73,7 @@ class TTPM(BaseLearner):
     """
 
     def __init__(self, topology_matrix, delta=0.1, epsilon=1,
-                 max_hop=0, penalty='BIC', max_iter=20):
+                 max_hop=0, penalty='BIC', max_iter=20, priori_knowledge=None):
         BaseLearner.__init__(self)
         assert isinstance(topology_matrix, np.ndarray),\
             'topology_matrix should be np.matrix object'
@@ -78,14 +81,14 @@ class TTPM(BaseLearner):
             'topology_matrix should be two dimension'
         assert topology_matrix.shape[0] == topology_matrix.shape[1],\
             'The topology_matrix should be square.'
-        self._topo = nx.from_numpy_matrix(topology_matrix,
-                                          create_using=nx.Graph)
+        self._topo = nx.Graph(topology_matrix)
         # initialize instance variables
         self._penalty = penalty
         self._delta = delta
         self._max_hop = max_hop
         self._epsilon = epsilon
         self._max_iter = max_iter
+        self.priori_knowledge = priori_knowledge
 
     def learn(self, tensor, *args, **kwargs):
         """
@@ -168,7 +171,9 @@ class TTPM(BaseLearner):
                     lambda j: len(self._k_hop_neibors(j, k)))).sum())
         # |V|x|T|
         self._T = (self._max_s_t - self._min_s_t) * len(tensor['node'].unique())
-
+        # Initialize PrioriKnowledge with number of nodes if None was passed
+        if self.priori_knowledge is None:
+            self.priori_knowledge = PrioriKnowledge(n_nodes=self._N)
     def _k_hop_neibors(self, node, k):
 
         if k == 0:
@@ -217,6 +222,7 @@ class TTPM(BaseLearner):
         self._get_effect_tensor_decays()
         # Initialize the adjacency matrix
         edge_mat = np.eye(self._N, self._N)
+        edge_mat[self.priori_knowledge.matrix == 1] = 1 # only add the required edges to edge_mat
         result = self._em(edge_mat)
         l_ret = result[0]
         
@@ -312,8 +318,7 @@ class TTPM(BaseLearner):
         events vector: the exogenous base intensity of each event.
         """
 
-        causal_g = nx.from_numpy_matrix((edge_mat - np.eye(self._N, self._N)),
-                                        create_using=nx.DiGraph)
+        causal_g = nx.DiGraph((edge_mat - np.eye(self._N, self._N)))
 
         if not nx.is_directed_acyclic_graph(causal_g):
             return -100000000000000, \
@@ -388,12 +393,12 @@ class TTPM(BaseLearner):
 
     def _one_step_change_iterator(self, edge_mat):
 
-        return map(lambda e: self._one_step_change(edge_mat, e),
+        return map(lambda e: self._one_step_change(edge_mat, e, self.priori_knowledge),
                    product(range(len(self._event_names)),
                            range(len(self._event_names))))
 
     @staticmethod
-    def _one_step_change(edge_mat, e):
+    def _one_step_change(edge_mat, e, priori_knowledge):
         """
         Changes the edge value in the edge_mat.
 
@@ -402,6 +407,7 @@ class TTPM(BaseLearner):
         edge_mat: np.ndarray
             Adjacency matrix.
         e: tuple_like (j,i)
+        priori_knowledge: PrioriKnowledge
 
         Returns
         -------
@@ -409,7 +415,7 @@ class TTPM(BaseLearner):
             new value of edge
         """
         j, i = e
-        if j == i:
+        if j == i or priori_knowledge.is_required(j, i) or priori_knowledge.is_forbidden(j, i):
             return edge_mat
         new_edge_mat = edge_mat.copy()
 
@@ -417,6 +423,8 @@ class TTPM(BaseLearner):
             new_edge_mat[j, i] = 0
             return new_edge_mat
         else:
+            if priori_knowledge.is_required(i, j):
+                return new_edge_mat
             new_edge_mat[j, i] = 1
             new_edge_mat[i, j] = 0
             return new_edge_mat

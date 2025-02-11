@@ -27,8 +27,8 @@ class CITest(object):
     """
 
     @staticmethod
-    def gauss(data, x, y, z):
-        """Gauss test for continues data
+    def fisherz_test(data, x, y, z):
+        """Fisher's z-transform for conditional independence test
 
         Parameters
         ----------
@@ -57,15 +57,15 @@ class CITest(object):
         >>> np.random.seed(23)
         >>> data = np.random.rand(2500, 4)
 
-        >>> p_value = CITest.cressie_read(data, 0, 1, [])
+        >>> p_value = CITest.fisherz_test(data, 0, 1, [])
         >>> print(p_value)
         0.011609430716781555
 
-        >>> p_value = CITest.cressie_read(data, 0, 1, [3])
+        >>> p_value = CITest.fisherz_test(data, 0, 1, [3])
         >>> print(p_value)
         0.01137523908727811
 
-        >>> p_value = CITest.cressie_read(data, 0, 1, [2, 3])
+        >>> p_value = CITest.fisherz_test(data, 0, 1, [2, 3])
         >>> print(p_value)
         0.011448214156529746
         """
@@ -572,8 +572,8 @@ def hsic_test(x, y, alpha=0.05, normalize=True):
     Returns
     -------
     out: int, 0 or 1
-        If 0, x and y are independent.
-        If 1, x and y are not independent.
+        If 0, x and y are not independent.
+        If 1, x and y are independent.
 
     Examples
     --------
@@ -583,9 +583,9 @@ def hsic_test(x, y, alpha=0.05, normalize=True):
     >>> print(hsic_test(x[:, [0]], x[:, [1]]))
     1
 
-    >>> np.random.seed(12)
-    >>> x = np.random.rand(500, 2)
-    >>> print(hsic_test(x[:, [0]], x[:, [1]]))
+    >>> x = np.random.rand(500, 1)
+    >>> z = x * 2
+    >>> print(hsic_test(x, z))
     0
     """
 
